@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'; // <-- Import SignalR
 
 export default function HomePage() {
   const [pesan, setPesan] = useState("");
@@ -8,11 +9,13 @@ export default function HomePage() {
   const [activeContact, setActiveContact] = useState(null);
 
   // URL Backend Azure
-  const API_URL_MESSAGES = "https://wechatbackend-gvcyhxbua7f6cqey.southeastasia-01.azurewebsites.net/api/WeChat/messages";
-  const API_URL_USERS = "https://wechatbackend-gvcyhxbua7f6cqey.southeastasia-01.azurewebsites.net/api/WeChat/users";
-  const API_URL_SEND = "https://wechatbackend-gvcyhxbua7f6cqey.southeastasia-01.azurewebsites.net/api/WeChat/send";
+  const BASE_URL = "https://wechatbackend-gvcyhxbua7f6cqey.southeastasia-01.azurewebsites.net";
+  const API_URL_MESSAGES = `${BASE_URL}/api/WeChat/messages`;
+  const API_URL_USERS = `${BASE_URL}/api/WeChat/users`;
+  const API_URL_SEND = `${BASE_URL}/api/WeChat/send`;
+  const HUB_URL = `${BASE_URL}/chathub`; // <-- URL untuk call WebSocket
 
-  // Tarik riwayat pesan
+  // Fungsi untuk menarik riwayat pesan
   const fetchMessages = async () => {
     try {
       const response = await axios.get(API_URL_MESSAGES);
@@ -22,22 +25,40 @@ export default function HomePage() {
     }
   };
 
-  // Tarik data saat pertama kali buka
+  // Setup Awal & SignalR Connection
   useEffect(() => {
-    // 1. Tarik Kontak (User)
+    // 1. Tarik data kontak dan pesan saat pertama kali buka
     axios.get(API_URL_USERS)
       .then(res => setContacts(res.data))
       .catch(err => console.error("Gagal menarik kontak:", err));
-
-    // 2. Tarik Pesan & Jalankan Polling 5 Detik
+      
     fetchMessages();
-    const interval = setInterval(() => {
-      fetchMessages();
-    }, 5000);
-    return () => clearInterval(interval);
+
+    // 2. Membangun Koneksi WebSocket (SignalR)
+    const connection = new HubConnectionBuilder()
+      .withUrl(HUB_URL)
+      .configureLogging(LogLevel.Information)
+      .withAutomaticReconnect() // Otomatis nyambung lagi kalau internet putus!
+      .build();
+
+    // 3. Memasang Telinga (Listener) untuk siaran dari Azure
+    connection.on("ReceiveNewMessage", () => {
+      console.log("Sinyal masuk: Ada pesan baru! Me-refresh layar otomatis...");
+      fetchMessages(); 
+    });
+
+    // 4. Mulai menelepon / menyambungkan ke Azure
+    connection.start()
+      .then(() => console.log("WebSocket/SignalR Connected! Siap menerima pesan real-time."))
+      .catch(err => console.error("SignalR Connection Error: ", err));
+
+    // Cleanup: Tutup telepon kalau halaman ditutup
+    return () => {
+      connection.stop();
+    };
   }, []);
 
-  // Filter pesan: Hanya tampilkan pesan dari kontak yang sedang diklik
+  // Filter pesan
   const filteredMessages = chatHistory.filter(m => 
     activeContact ? m.openId === activeContact.openid : false
   );
@@ -53,12 +74,13 @@ export default function HomePage() {
 
     try {
       await axios.post(API_URL_SEND, {
-        openId: activeContact.openid, // Otomatis mengirim ke kontak yang sedang aktif
+        openId: activeContact.openid, 
         content: pesan
       });
       
       setPesan(""); 
-      fetchMessages(); 
+      // Kita TIDAK PERLU lagi memanggil fetchMessages() di sini secara manual,
+      // Karena backend Azure akan mengirim sinyal SignalR "ReceiveNewMessage" saat pesan berhasil disimpan.
       
     } catch (error) {
       console.error("Gagal mengirim pesan:", error);
@@ -71,7 +93,7 @@ export default function HomePage() {
       {/* ================= SIDEBAR KIRI ================= */}
       <div style={{ width: '30%', backgroundColor: '#111b21', color: 'white', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px', backgroundColor: '#202c33', borderBottom: '1px solid #333' }}>
-          <h3 style={{ margin: 0 }}>WeChat testing</h3>
+          <h3 style={{ margin: 0 }}>WeChat Test</h3>
         </div>
         
         {/* Daftar Klien */}
@@ -87,7 +109,6 @@ export default function HomePage() {
                    padding: '15px 20px',
                    cursor: 'pointer',
                    borderBottom: '1px solid #202c33',
-                   // Ubah warna background jika kontak ini sedang dipilih
                    backgroundColor: activeContact?.openid === user.openid ? '#2a3942' : 'transparent',
                    transition: 'background-color 0.2s'
                  }}
@@ -134,7 +155,7 @@ export default function HomePage() {
                 }}
               >
                 <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '5px' }}>
-                  {chat.isFromClient ? activeContact.nickname : 'Radianda Sandbox Acc'}
+                  {chat.isFromClient ? activeContact.nickname : 'radi sandbox acc'}
                 </div>
                 {chat.messageContent}
               </div>
@@ -148,11 +169,11 @@ export default function HomePage() {
             type="text" 
             value={pesan}
             onChange={(e) => setPesan(e.target.value)}
-            disabled={!activeContact} // Matikan input jika belum pilih orang
+            disabled={!activeContact}
             placeholder={activeContact ? "Ketik balasan..." : "Pilih klien terlebih dahulu..."} 
             style={{ flex: 1, padding: '12px 20px', borderRadius: '20px', border: 'none', outline: 'none', fontSize: '1rem' }}
             onKeyDown={(e) => {
-               if (e.key === 'Enter') handleKirim(); // Bisa kirim pakai tombol Enter
+               if (e.key === 'Enter') handleKirim();
             }}
           />
           <button 

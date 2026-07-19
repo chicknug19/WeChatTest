@@ -4,6 +4,8 @@ using System.Text;
 using System.Xml.Linq;
 using WeChatBackend.Models;
 using System.Text.Json;
+using Microsoft.AspNetCore.SignalR;
+using WeChatBackend.Hubs;
 using System.Net.Http;
 
 namespace WeChatBackend.Controllers
@@ -15,11 +17,13 @@ namespace WeChatBackend.Controllers
         private readonly AppDbContext _context;
         // Gunakan token yang persis sama dengan di Sandbox WeChat
         private const string WECHAT_TOKEN = "token_sandbox_radi";
+        private readonly IHubContext<ChatHub> _hubContext;
 
         // Inject AppDbContext agar bisa akses database
-        public WeChatController(AppDbContext context)
+        public WeChatController(AppDbContext context, IHubContext<ChatHub> hubContext)
         {
             _context = context;
+            _hubContext = hubContext;
         }
 
         [HttpGet("webhook")]
@@ -88,6 +92,8 @@ namespace WeChatBackend.Controllers
 
                 _context.ChatMessages.Add(newMessage);
                 await _context.SaveChangesAsync();
+                // Teriakkan pesan "ReceiveNewMessage" ke semua layar admin yang terbuka
+                await _hubContext.Clients.All.SendAsync("ReceiveNewMessage");
 
                 // Print ke console (opsional, untuk memastikan data masuk)
                 Console.WriteLine($"[DB SAVED] Klien {fromUser} bilang: {content}");
@@ -137,6 +143,7 @@ namespace WeChatBackend.Controllers
                 };
                 _context.ChatMessages.Add(adminMessage);
                 await _context.SaveChangesAsync();
+                await _hubContext.Clients.All.SendAsync("ReceiveNewMessage");
 
                 // LANGKAH B: Tarik Access Token dari WeChat
                 // Menggunakan kredensial Sandbox yang sudah kamu berikan sebelumnya
