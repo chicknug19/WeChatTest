@@ -71,7 +71,7 @@ export default function HomePage() {
       {/* ================= SIDEBAR KIRI ================= */}
       <div style={{ width: '30%', backgroundColor: '#111b21', color: 'white', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px', backgroundColor: '#202c33', borderBottom: '1px solid #333' }}>
-          <h3 style={{ margin: 0 }}>PT Cipta Utama Karya CS</h3>
+          <h3 style={{ margin: 0 }}>WeChat testing</h3>
         </div>
         
         {/* Daftar Klien */}
