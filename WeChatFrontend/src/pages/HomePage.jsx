@@ -90,7 +90,7 @@ export default function HomePage() {
   const showChatRoom = !isMobile || activeContact;
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', fontFamily: 'sans-serif', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100dvh', width: '100vw', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       
       {/* ================= SIDEBAR KIRI ================= */}
       <div style={{ 
