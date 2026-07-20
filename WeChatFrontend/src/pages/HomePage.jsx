@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 
@@ -8,17 +8,17 @@ export default function HomePage() {
   const [contacts, setContacts] = useState([]);
   const [activeContact, setActiveContact] = useState(null);
   
-  // State untuk mendeteksi apakah layar berukuran HP (mobile)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  
+  // [BARU] 1. Membuat referensi (jangkar) untuk menggulir layar otomatis ke bawah
+  const messagesEndRef = useRef(null);
 
-  // URL Backend Azure
   const BASE_URL = "https://wechatbackend-gvcyhxbua7f6cqey.southeastasia-01.azurewebsites.net";
   const API_URL_MESSAGES = `${BASE_URL}/api/WeChat/messages`;
   const API_URL_USERS = `${BASE_URL}/api/WeChat/users`;
   const API_URL_SEND = `${BASE_URL}/api/WeChat/send`;
   const HUB_URL = `${BASE_URL}/chathub`;
 
-  // Deteksi perubahan ukuran layar (Resize Listener)
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
@@ -35,11 +35,6 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    // 1. Minta Izin Notifikasi Desktop ke Browser
-    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-        Notification.requestPermission();
-    }
-
     axios.get(API_URL_USERS)
       .then(res => setContacts(res.data))
       .catch(err => console.error("Gagal menarik kontak:", err));
@@ -52,16 +47,23 @@ export default function HomePage() {
       .withAutomaticReconnect()
       .build();
 
-    // 2. Tampilkan Notifikasi saat SignalR menerima pesan
     connection.on("ReceiveNewMessage", () => {
       console.log("Sinyal masuk: Ada pesan baru!");
       fetchMessages(); 
       
-      // Trigger Notifikasi Windows/Mac jika diizinkan
+      // Trigger Notifikasi (Hanya muncul jika sudah diizinkan)
       if ("Notification" in window && Notification.permission === "granted") {
-          new Notification("Pesan WeChat Baru", {
-              body: "Ada pesan baru masuk dari klien. Cek sekarang!",
-          });
+          // Opsional: Cek apakah tab browser sedang disembunyikan/minimize
+          if (document.hidden) {
+              new Notification("Pesan Baru - PT Cipta Utama Karya", {
+                  body: "Ada pesan baru masuk dari klien. Cek sekarang!",
+              });
+          } else {
+              // Jika tab sedang dibuka, kita tetap tampilkan untuk mempermudah testing
+              new Notification("Pesan Baru", {
+                  body: "Ada pesan baru masuk dari klien.",
+              });
+          }
       }
     });
 
@@ -77,6 +79,13 @@ export default function HomePage() {
   const filteredMessages = chatHistory.filter(m => 
     activeContact ? m.openId === activeContact.openid : false
   );
+
+  // [BARU] 2. Efek untuk menggulir layar secara mulus setiap kali ada pesan baru
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [filteredMessages]); // Akan terpanggil setiap kali filteredMessages berubah
 
   const handleKirim = async () => {
     if (!pesan.trim()) return;
@@ -96,17 +105,14 @@ export default function HomePage() {
     }
   };
 
-  // --- LOGIKA TAMPILAN ---
   const showSidebar = !isMobile || !activeContact;
   const showChatRoom = !isMobile || activeContact;
 
-  // --- FUNGSI FORMAT WAKTU ---
   const formatDateSeparator = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     
-    // Setel jam ke 00:00:00 untuk perbandingan murni hari
     const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
@@ -119,14 +125,22 @@ export default function HomePage() {
         const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
         return days[date.getDay()];
     }
-    
-    // Jika lebih dari 7 hari, tampilkan tanggal lengkap
     return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
   };
 
   const formatTime = (dateString) => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Fungsi saat kontak diklik (Juga memicu permintaan izin notifikasi ke browser)
+  const handleContactClick = (user) => {
+    setActiveContact(user);
+    
+    // Minta izin notifikasi jika belum pernah ditanya
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
   };
 
   return (
@@ -141,7 +155,7 @@ export default function HomePage() {
         flexDirection: 'column' 
       }}>
         <div style={{ padding: '20px', backgroundColor: '#202c33', borderBottom: '1px solid #333' }}>
-          <h3 style={{ margin: 0 }}>WeChat Test</h3>
+          <h3 style={{ margin: 0 }}>PT Cipta Utama Karya CS</h3>
         </div>
         
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -151,7 +165,7 @@ export default function HomePage() {
              contacts.map(user => (
                <div 
                  key={user.openid} 
-                 onClick={() => setActiveContact(user)}
+                 onClick={() => handleContactClick(user)}
                  style={{
                    padding: '15px 20px',
                    cursor: 'pointer',
@@ -178,7 +192,6 @@ export default function HomePage() {
         backgroundColor: '#efeae2' 
       }}>
         
-        {/* Header Chat */}
         <div style={{ padding: '15px 20px', backgroundColor: '#f0f2f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center' }}>
           {isMobile && activeContact && (
             <button 
@@ -193,7 +206,6 @@ export default function HomePage() {
           </h3>
         </div>
 
-        {/* Balon Chat & Pemisah Tanggal */}
         <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {!activeContact ? (
             <div style={{ margin: 'auto', backgroundColor: 'white', padding: '10px 20px', borderRadius: '20px', color: '#555', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', textAlign: 'center' }}>
@@ -204,7 +216,6 @@ export default function HomePage() {
           ) : (
             filteredMessages.map((chat, index) => {
               
-              // Logika penentu apakah harus memunculkan pemisah tanggal
               let showSeparator = false;
               if (index === 0) {
                   showSeparator = true;
@@ -219,7 +230,6 @@ export default function HomePage() {
               return (
                 <div key={chat.id} style={{ display: 'flex', flexDirection: 'column' }}>
                   
-                  {/* DIV PEMISAH TANGGAL (Tengah Layar) */}
                   {showSeparator && (
                     <div style={{ 
                       alignSelf: 'center', 
@@ -236,7 +246,6 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {/* DIV BALON CHAT UTAMA */}
                   <div style={{ 
                     alignSelf: chat.isFromClient ? 'flex-start' : 'flex-end', 
                     backgroundColor: chat.isFromClient ? 'white' : '#dcf8c6', 
@@ -248,17 +257,14 @@ export default function HomePage() {
                     flexDirection: 'column',
                     minWidth: '120px' 
                   }}>
-                    {/* Nama Pengirim */}
                     <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '4px', fontWeight: 'bold' }}>
                       {chat.isFromClient ? activeContact.nickname : 'Admin'}
                     </div>
                     
-                    {/* Isi Pesan */}
                     <div style={{ wordBreak: 'break-word', fontSize: '0.95rem' }}>
                       {chat.messageContent}
                     </div>
 
-                    {/* Waktu Spesifik Pesan (Jam Saja) */}
                     <div style={{ fontSize: '0.7rem', color: '#999', alignSelf: 'flex-end', marginTop: '4px' }}>
                       {formatTime(chat.createdAt)} 
                     </div>
@@ -268,9 +274,11 @@ export default function HomePage() {
               );
             })
           )}
+          
+          {/* [BARU] 3. Ini adalah elemen jangkar yang menjadi titik tuju scroll */}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Kolom Ketik Pesan */}
         <div style={{ padding: '10px 15px', backgroundColor: '#f0f2f5', display: 'flex', gap: '10px' }}>
           <input 
             type="text" 
