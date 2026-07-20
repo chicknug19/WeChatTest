@@ -176,7 +176,7 @@ export default function HomePage() {
                 }}
               >
                 <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '5px' }}>
-                  {chat.isFromClient ? activeContact.nickname : 'Admin'}
+                  {chat.isFromClient ? activeContact.nickname : 'radi sandbox acc'}
                 </div>
                 {chat.messageContent}
               </div>
