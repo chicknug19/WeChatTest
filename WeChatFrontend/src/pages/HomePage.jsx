@@ -35,6 +35,11 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    // 1. Minta Izin Notifikasi Desktop ke Browser
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+        Notification.requestPermission();
+    }
+
     axios.get(API_URL_USERS)
       .then(res => setContacts(res.data))
       .catch(err => console.error("Gagal menarik kontak:", err));
@@ -47,9 +52,17 @@ export default function HomePage() {
       .withAutomaticReconnect()
       .build();
 
+    // 2. Tampilkan Notifikasi saat SignalR menerima pesan
     connection.on("ReceiveNewMessage", () => {
-      console.log("Sinyal masuk: Ada pesan baru! Me-refresh layar otomatis...");
+      console.log("Sinyal masuk: Ada pesan baru!");
       fetchMessages(); 
+      
+      // Trigger Notifikasi Windows/Mac jika diizinkan
+      if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("Pesan WeChat Baru", {
+              body: "Ada pesan baru masuk dari klien. Cek sekarang!",
+          });
+      }
     });
 
     connection.start()
@@ -84,10 +97,37 @@ export default function HomePage() {
   };
 
   // --- LOGIKA TAMPILAN ---
-  // Di HP: Tampilkan sidebar JIKA belum ada kontak yang dipilih
   const showSidebar = !isMobile || !activeContact;
-  // Di HP: Tampilkan ruang chat JIKA sudah ada kontak yang dipilih
   const showChatRoom = !isMobile || activeContact;
+
+  // --- FUNGSI FORMAT WAKTU ---
+  const formatDateSeparator = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    
+    // Setel jam ke 00:00:00 untuk perbandingan murni hari
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const diffTime = today - dateOnly;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Hari ini";
+    if (diffDays === 1) return "Kemarin";
+    if (diffDays < 7 && diffDays > 1) {
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        return days[date.getDay()];
+    }
+    
+    // Jika lebih dari 7 hari, tampilkan tanggal lengkap
+    return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+  };
+
+  const formatTime = (dateString) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div style={{ display: 'flex', height: '100dvh', width: '100vw', fontFamily: 'sans-serif', overflow: 'hidden' }}>
@@ -140,7 +180,6 @@ export default function HomePage() {
         
         {/* Header Chat */}
         <div style={{ padding: '15px 20px', backgroundColor: '#f0f2f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center' }}>
-          {/* Tombol KEMBALI khusus untuk versi Mobile */}
           {isMobile && activeContact && (
             <button 
               onClick={() => setActiveContact(null)}
@@ -154,7 +193,7 @@ export default function HomePage() {
           </h3>
         </div>
 
-        {/* Balon Chat */}
+        {/* Balon Chat & Pemisah Tanggal */}
         <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {!activeContact ? (
             <div style={{ margin: 'auto', backgroundColor: 'white', padding: '10px 20px', borderRadius: '20px', color: '#555', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', textAlign: 'center' }}>
@@ -163,24 +202,71 @@ export default function HomePage() {
           ) : filteredMessages.length === 0 ? (
             <p style={{ textAlign: 'center', color: '#888' }}>Belum ada riwayat pesan dengan klien ini.</p>
           ) : (
-            filteredMessages.map((chat) => (
-              <div 
-                key={chat.id} 
-                style={{ 
-                  alignSelf: chat.isFromClient ? 'flex-start' : 'flex-end', 
-                  backgroundColor: chat.isFromClient ? 'white' : '#dcf8c6', 
-                  padding: '10px 15px', 
-                  borderRadius: '10px', 
-                  maxWidth: isMobile ? '85%' : '60%', // Balon chat lebih lebar di HP
-                  boxShadow: '0 1px 1px rgba(0,0,0,0.1)'
-                }}
-              >
-                <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '5px' }}>
-                  {chat.isFromClient ? activeContact.nickname : 'radi sandbox acc'}
+            filteredMessages.map((chat, index) => {
+              
+              // Logika penentu apakah harus memunculkan pemisah tanggal
+              let showSeparator = false;
+              if (index === 0) {
+                  showSeparator = true;
+              } else {
+                  const prevChatDate = new Date(filteredMessages[index - 1].createdAt).toDateString();
+                  const currentChatDate = new Date(chat.createdAt).toDateString();
+                  if (prevChatDate !== currentChatDate) {
+                      showSeparator = true;
+                  }
+              }
+
+              return (
+                <div key={chat.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                  
+                  {/* DIV PEMISAH TANGGAL (Tengah Layar) */}
+                  {showSeparator && (
+                    <div style={{ 
+                      alignSelf: 'center', 
+                      backgroundColor: '#e1f2fb', 
+                      color: '#555', 
+                      padding: '5px 12px', 
+                      borderRadius: '8px', 
+                      fontSize: '0.75rem', 
+                      fontWeight: 'bold',
+                      margin: '15px 0 10px 0',
+                      boxShadow: '0 1px 1px rgba(0,0,0,0.05)'
+                    }}>
+                      {formatDateSeparator(chat.createdAt)}
+                    </div>
+                  )}
+
+                  {/* DIV BALON CHAT UTAMA */}
+                  <div style={{ 
+                    alignSelf: chat.isFromClient ? 'flex-start' : 'flex-end', 
+                    backgroundColor: chat.isFromClient ? 'white' : '#dcf8c6', 
+                    padding: '8px 12px', 
+                    borderRadius: '10px', 
+                    maxWidth: isMobile ? '85%' : '60%',
+                    boxShadow: '0 1px 1px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: '120px' 
+                  }}>
+                    {/* Nama Pengirim */}
+                    <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '4px', fontWeight: 'bold' }}>
+                      {chat.isFromClient ? activeContact.nickname : 'Admin'}
+                    </div>
+                    
+                    {/* Isi Pesan */}
+                    <div style={{ wordBreak: 'break-word', fontSize: '0.95rem' }}>
+                      {chat.messageContent}
+                    </div>
+
+                    {/* Waktu Spesifik Pesan (Jam Saja) */}
+                    <div style={{ fontSize: '0.7rem', color: '#999', alignSelf: 'flex-end', marginTop: '4px' }}>
+                      {formatTime(chat.createdAt)} 
+                    </div>
+                  </div>
+                  
                 </div>
-                {chat.messageContent}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
